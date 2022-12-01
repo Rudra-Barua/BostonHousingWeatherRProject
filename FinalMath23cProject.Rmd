@@ -1,0 +1,561 @@
+---
+title: "Math23c Final Project"
+output:
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, include = TRUE, message=F, warning=F)
+```
+## MATH 23C PROJECT: AN INVESTIGATION INTO BOSTON HOUSING AND WEATHER
+## By Rudra Barua, Hope Ha, and Matti Tan
+
+This is our investigation into a Boston Housing dataset and Boston weather dataset. 
+
+## MODELLING THE DATA 
+We began by modeling the data through different graphical displays. 
+
+\textbf{Histogram of Lot Area}
+
+```{r, echo = FALSE}
+boston <- read.csv("boston.csv")
+library(ggplot2)
+#GGPlot histogram of Lot Area
+LotAreaPlot <- ggplot(boston, aes(x=LotArea)) + 
+  geom_histogram(bins = 30,color="darkblue", fill="lightblue") 
+```
+```{r, echo = TRUE, fig.width = 5, fig.height = 3}
+print(LotAreaPlot + labs(title = "Boston Housing Lot Area"
+                         ,y= "Count", x = "Lot Area (Square Feet)"))
+```
+A histogram of the different lot areas displays a leftward skew. It appears to be that very few houses in Boston have lot areas greater than 20,000 square feet.
+
+\textbf{Barplot of Overall Quality}
+```{r, echo = FALSE}
+df <- as.data.frame(table(boston$OverallQual)); df
+
+#This barplot has the exact count of each score on top of their respective bar
+OverallQualityPlot <- ggplot(df, aes(x=Var1, y = Freq)) + 
+  geom_bar(stat = "identity", color = "darkblue", fill = "lightblue") + 
+  geom_text(aes(label = Freq), vjust=-0.3, size=3.5)+
+  theme_minimal()
+```
+```{r, echo = TRUE, fig.width = 5, fig.height = 3}
+print(OverallQualityPlot + labs(title = "Boston Housing Overall Quality Rating",
+                                y = "Count", x = "Rating (Score Out of 10)"))
+```
+The barplot displays how the most common rating of overall quality is 5 with 428 respondents giving this score. And, the least common raating is 1 with only 2 respondents giving this score.
+
+\textbf{Piechart of Lot Configuration}
+```{r, echo = FALSE}
+Inside <- length(which(boston$LotConfig == "Inside")) 
+Corner <- length(which(boston$LotConfig == "Corner"))
+FR2 <- length(which(boston$LotConfig == "FR2"))
+CulDeSac <- length(which(boston$LotConfig == "CulDSac"))
+FR3 <- length(which(boston$LotConfig == "FR3"))
+df <- data.frame(
+  Type = c("Inside", "Corner", "Cul-De-Sac", "FR2", "FR3"),
+  Count = c(Inside, Corner, CulDeSac, FR2, FR3)
+)
+
+#First constructing it as a barplot 
+bp<- ggplot(df, aes(x="", y=Count, fill=Type))+
+  geom_bar(width = 1, stat = "identity")
+
+```
+```{r, echo = TRUE, fig.width = 4, fig.height = 4}
+pie <- bp + coord_polar("y", start=0) 
+plot(pie)
+```
+
+This displays types of locations and shapes of the lot such as whether or not it is an inside lot (Inside), corner lot (Corner), cul-de-sac (CulDSac), a lot withfrontage on 2  sides of the property (FR2), or a lot with frontage on 3 sides of the property (FR3). The pie-chart above illustrates how a majority of Boston houses have "inside" lot configurations while house lots that have frontage in 3 sides of the property are the least common.
+
+Having gotten some sense of the nature of our data from our graphical displays, we then performed a series of investigations to best analyze our data. 
+
+## INVESTIGATION: How can we use novel statistics to examine the data for the surface area of open porches in Boston houses? 
+Let us take a more robust look at the data for the surface area of open porches in Boston houses. Since not all houses have open porches, we get a very wide spread of values that may lead us astray when we look at central tendency values.
+
+\textbf{Maximum and Minimum:}
+```{r, echo = TRUE, include = TRUE}
+Porch <- boston$OpenPorchSF #extracting the data
+max(Porch)
+min(Porch)
+```
+As seen, we have a massive difference between the maximum and minimum values of porch surface area sizes. 
+```{r, echo = TRUE, include = TRUE}
+length(which(Porch == 0)) 
+#we also have 642 houses that do not have open porches
+642/1459 #this is about 44% of our data
+mean(Porch) 
+#Hence, this mean might not really capture the true average of Boston houses
+#with porches because of the many outliers in this data.
+```
+
+\textbf{Median:}
+```{r echo=TRUE}
+median(Porch)
+```
+This is the middle value in the data, and it is noticeably less than the mean. 
+
+\textbf{Skewness:}
+```{r, echo = FALSE}
+library(e1071)
+```
+```{r echo=TRUE}
+skewness(Porch)
+```
+Our positive skewness indicates that the surface area of open porches in Boston houses is skewed right, which means that most data falls to the right side of the graph's peak, and generally (but not always), the mean is greater than the median (as is the case here).  
+
+\textbf{Trimmed Mean:}
+But, probably one of the best measures of central tendency for this data is the trimmed mean. By taking a trimmed mean, we remove a predetermined amount of the data (in this case, the lowest and highest values, outliers), and find an average for the remaining data observations. 
+R has a built-in function for this:
+```{r, echo = TRUE}
+mean(Porch, trim = 0.44) #trimming 44% from each side removes extreme values
+#This looks like a more reasonable mean surface area for the average Boston house porch
+```
+
+## INVESTIGATION: What are the highest correlated variables? How might we model this?
+
+We would like to make a heatmap of the correlations of the numeric variables. 
+We'll first do this for all correlations, ignoring ones that are less than 0.05. 
+```{r echo = FALSE, include = FALSE}
+library(corrplot)
+boston2 <- read.csv("boston2.csv")
+numeric <- which(sapply(boston2, is.numeric)) # Index the numeric columns
+length(numeric) # 38 numeric columns
+numcols <- boston2[,numeric] # Lets grab all the numeric columns
+# We want only the correlations for the numeric columns
+numcorrs <- cor(numcols, use="pairwise.complete.obs") 
+# We want to sort the correlations by highest to lowest
+corrs <- as.matrix(sort(numcorrs[,'SalePrice'], decreasing = TRUE)) 
+# We can just ignore the correlations that are less than 0.05, otherwise our
+# heatmap will get messy
+newcorrs <- names(which(apply(corrs, 1, function(x) abs(x)>0.05)))
+# Convert it to a matrix
+numcorrs <- numcorrs[newcorrs, newcorrs]
+```
+```{r echo = TRUE, fig.width = 4, fig.height = 4}
+corrplot(numcorrs, method="color",tl.cex = 0.7,number.cex=.7) # Pretty cool right!
+```
+
+Now, lets make a correlation matrix for just the relationships that have a correlation above 0.5. 
+```{r echo = FALSE}
+newcorrs <- names(which(apply(corrs, 1, function(x) abs(x)>0.5)))
+# Convert it to a matrix
+numcorrs <- numcorrs[newcorrs, newcorrs]
+```
+```{r echo = TRUE, fig.width = 4, fig.height = 4}
+corrplot(numcorrs, method="number",tl.cex = 0.7,number.cex=.7) # Pretty cool right!
+
+# A different style graph
+corrplot.mixed(numcorrs, lower = "square", upper = "number", tl.cex = 0.7,cl.cex = .7, number.cex=.7,tl.pos = "lt")
+```
+
+## INVESTIGATION: Is there a relationship between whether a house has central air conditioning and its overall condition? 
+Overall Condition measures the current state of the house in terms of wear and tear, physical comfort and present structural stability. It would be interesting to see if whether a house has central air conditioning has anything to do with it's overall condition. 
+We can test this relationship using a permutation test. We first visualize the overall condition using a barplot: 
+```{r, echo = FALSE, include = FALSE}
+df <- as.data.frame(table(boston$OverallCond)); df
+OverallConditionPlot <- ggplot(df, aes(x=Var1, y = Freq)) + 
+  geom_bar(stat = "identity", color = "darkblue", fill = "lightblue") + 
+  geom_text(aes(label = Freq), vjust=-0.3, size=3.5)+
+  theme_minimal()
+```
+```{r, echo = TRUE, fig.width = 5, fig.height = 3}
+print(OverallConditionPlot + labs(title = "Boston Housing Overall Condition Rating",
+                                  y = "Count", x = "Rating (Score Out of 10)"))
+
+```
+Now, we can go ahead and conduct the actual permutation test: 
+```{r, echo = TRUE}
+sum(boston$CentralAir == "Y") #number of houses with central air conditioning
+sum(boston$CentralAir == "N") #number of houses without central air conditioning
+
+# the observed averages of overall housing condition scores of houses with and without central air conditioning
+CA.Yes.Avg <- sum(boston$OverallCond*(boston$CentralAir == "Y"))/sum(boston$CentralAir == "Y"); CA.Yes.Avg 
+CA.No.Avg <- sum(boston$OverallCond*(boston$CentralAir == "N"))/sum(boston$CentralAir == "N"); CA.No.Avg
+
+# observed difference
+observed <- CA.Yes.Avg - CA.No.Avg; observed 
+```
+It appears that, on average, houses with central air conditioning have slightly higher scores. 
+
+We can then take 10000 permuted samples, and make a histogram of the mean differences in the permuted samples. 
+```{r, echo = FALSE, include = FALSE}
+#Now replace Male with a random sample
+CentralAir <- sample(boston$CentralAir); CentralAir #permuted Central Air Y/N column
+sum(CentralAir == "Y")
+#still have 1358 houses with central air conditioning
+CA.Yes.Avg <- sum(boston$OverallCond*(CentralAir == "Y"))/sum(CentralAir == "Y"); CA.Yes.Avg
+CA.No.Avg <- sum(boston$OverallCond*(CentralAir == "N"))/sum(CentralAir == "N"); CA.No.Avg
+CA.Yes.Avg - CA.No.Avg #as likely to be negative or positive
+
+#Repeat 10000 times
+N <- 10000
+Mean.Differences <- numeric(N)
+for(i in 1:N){
+  CentralAir <- sample(boston$CentralAir); CentralAir #permuted Central Air Y/N column
+  CA.Yes.Avg <- sum(boston$OverallCond*(CentralAir == "Y"))/sum(CentralAir == "Y")
+  CA.No.Avg <- sum(boston$OverallCond*(CentralAir == "N"))/sum(CentralAir == "N")
+  Mean.Differences[i] <- CA.Yes.Avg - CA.No.Avg #as likely to be negative or positive
+}
+mean(Mean.Differences)#very close to 0!
+```
+```{r, echo = TRUE, fig.height = 3, fig.width = 5}
+hist(Mean.Differences, breaks = "FD")
+abline(v = observed, col = "red") #Distant from the most dense region
+pvalue <- (sum(Mean.Differences >= observed)+1)/(N+1); pvalue
+```
+Since we have an incredibly small p-value that is certainly < 0.05, we then have a minute chance that we'd observe such a discrepancy in our data. Therefore, there is sufficient evidence to reject the null hypothesis that there is no significant difference in the average overall condition score of Boston houses between houses that have and that do not have central air conditioning, and there is a relationship between whether a house has central air conditioning and its overall condition.  
+
+## INVESTIGATION: Is there a relationship between whether a house has central air conditioning and whether a house has a paved driveway? 
+
+We can conduct this investigation by using a contingency table, followed by a chi-square test. 
+
+```{r, echo = FALSE, include = FALSE}
+index<-which(!is.na(boston$PavedDrive) & !is.na(boston$CentralAir)&
+               ((boston$PavedDrive == "Y")|(boston$PavedDrive == "N")) & 
+               ((boston$CentralAir == "Y")|(boston$CentralAir == "N")))
+
+length(index) # we selected 1427 rows
+bostonCleaned <- boston[index,] # new, clean dataset
+CentralAir2 <- boston$CentralAir[index] # new CentralAir
+PavedDrive2 <- boston$PavedDrive[index] # new PavedDrive
+CenAir <- CentralAir2 == "Y"; head(CentralAir2); head(CenAir) # this checks out
+PD <- PavedDrive2 == "Y"; head(PavedDrive2); head(PD) # this also checks out
+BostonLogical <- data.frame(CenAir, PD); head(BostonLogical) # new dataframe
+```
+
+In making our contingency table, we can do it manually and by using the table function. Manually, this looks like: 
+```{r, echo = TRUE}
+# houses with Central Åir and Paved Driveways. 
+CentralPave <- which(BostonLogical$CenAir&BostonLogical$PD);head(CentralPave)
+length(CentralPave) # there are 1258 counts. 
+
+# houses with Central Air and WITHOUT Paved Driveways. 
+CentralNotPave <- which(BostonLogical$CenAir& !BostonLogical$PD)
+length(CentralNotPave) # there are 74 counts.
+
+# houses WITHOUT Central Air and with Paved Driveways. 
+NotCentralPave <- which(!BostonLogical$CenAir& BostonLogical$PD)
+length(NotCentralPave) # there are 43 counts. 
+
+# houses WITHOUT Central Air and WITHOUT Paved Driveways. 
+NotCentralNotPave <- which(!BostonLogical$CenAir& !BostonLogical$PD)
+length(NotCentralNotPave) # there are 52 counts.
+```
+Thus, we would expect our contingency table to look like: 
+
+                                     CENTRAL AIR 
+                                   FALSE      TRUE
+
+                           FALSE     52         43
+ PAVED DRIVEWAY 
+              
+                            TRUE     74       1258
+
+We can check this with the table function, and indeed, using our logical columns and our cleaned dataset returns the same contingency table which matches with what we expected:
+```{r, echo = TRUE}
+library("printr")
+table(BostonLogical$CenAir, BostonLogical$PD); table(bostonCleaned$CentralAir, bostonCleaned$PavedDrive)
+detach('package:printr', unload = TRUE)
+```
+
+We now can conduct a chi-squared test, where our null hypothesis is that whether a house in Boston has Central Air is independent of whether the house has a Paved Driveway.
+
+```{r, echo = TRUE}
+Observed <- table(BostonLogical$CenAir, BostonLogical$PD); Observed
+Expected <- outer(rowSums(Observed), colSums(Observed))/sum(Observed); Expected
+# Manually:
+Chi2 <-sum((Observed-Expected)^2/Expected); Chi2 # to calculate the chi-squared value
+Pvalue<- pchisq(Chi2,1,lower.tail = FALSE); Pvalue # to find the p-value
+# built-in test confirms our result! 
+chisq.test(BostonLogical$CenAir, BostonLogical$PD) 
+```
+This returns that our p-value is 6.764544e-60, which means that the probability of this result occurring by chance is extremely low. As 6.764544e-60 is less than 0.01, we conclude that the result is significant, and as such, we can reject the null hypothesis that whether a house has central air conditioning is independent of whether a house has a paved driveway.  We therefore conclude that whethera house has central air conditioning and whether a house has a paved driveway are dependent in this dataset (they share some sort of relationship).
+
+
+## INVESTIGATION: Does Lot Area predict Garage Area? 
+We shall investigate whether or not Lot Area predicts Garage Area using linear regression. This is interesting because it helps us understand how households allocate the area that they purchase. 
+Hence, we are using Lot Area (in square feet) as the predictor for Garage Area (in square feet). 
+
+```{r, echo = TRUE, fig.width = 5, fig.height =3}
+#Making a scatter plot of the data 
+LotvGaragePlot <- ggplot(boston, aes(x=LotArea, y=GarageArea)) + 
+  geom_point()
+
+print(LotvGaragePlot + labs(title = "Housing Garage Area Against Lot Area"
+                            , x = "Lot Area (Square Feet)", 
+                            y = "Garage Area (Square Feet)"))
+
+#Using the built-in R function 
+Boston.lm <- lm(boston$GarageArea ~ boston$LotArea, data = boston); Boston.lm
+
+#Plotting the regression line 
+coeff=coefficients(Boston.lm)
+#Regression Line Equation
+eq = paste0("y = ", round(coeff[2],3), "*x + ", round(coeff[1],3))
+
+#Adding to plot
+print(LotvGaragePlot + 
+        labs(title = "Housing Garage Area Against Lot Area"
+             , x = "Lot Area (Square Feet)", y = "Garage Area (Square Feet)") 
+      + geom_abline(intercept = 336.97230, slope = 0.01383, color="blue", 
+                    linetype="dashed")+ ggtitle(eq)) 
+```
+Hence, the line of best fit that we find through linear regression depicts how there might be a positive relationship/correlation between lot area and garage area. An increase in lot area might predict an increase in the garage area of the house. Intuitively, this is sensible since a larger lot area will allow for more land to be allocated for garages. Intriguingly, this might be indicative of how people choose to use the lot area they have.
+
+## INVESTIGATION: Is the lot area of a house connected to the type of sale condition of Boston Houses?
+We shall next investigate whether the lot area of a house is connected to the type of sale using logistic regression, which could be an indicator of the type of buyers for Boston houses. 
+That is, we will use lot area to determine the type of sale condition of Boston houses; there are usually two types of sale condition: Normal (typical single buyer 
+and seller) and Non-normal (Sold to a family, possible loan etc.)
+
+```{r, echo = TRUE, fig.height = 3, fig.width = 5}
+library(stats4) #will need this library (install if necessary)
+#In this revised data set, the sale type entries were replaced with binary
+#values 1 and 0 from "Normal" and the other non-normal entries, respectively. 
+
+#Now we can extract the  as a Bernoulli random variable:
+Y <- boston$SaleCondition
+
+#To perform logistic regression, we will assume that 
+#p = exp(alpha x+beta)/(1 + exp(alpha x+beta))
+#where 0 =< p =< 1
+
+#First, we shall model the probability of a sale condition
+# as a function of lot area
+#Here, the predictor is the lot area column 
+LA <- boston$LotArea
+
+#Creating the log-likelohood function for lot frontage as the predictor
+MLL<- function(alpha, beta) {
+  -sum( log( exp(alpha+beta*LA)/(1+exp(alpha+beta*LA)) )*Y
+        + log(1/(1+exp(alpha+beta*LA)))*(1-Y) )
+}
+
+results<-mle(MLL, start = list(alpha = 0, beta = 0))#initial guess
+results@coef#from this we know that...
+#alpha = 1.554842e-08
+#beta = 1.451108e-04
+plot(LA,Y)
+curve( exp(results@coef[1]+results@coef[2]*x)/ (1+exp(results@coef[1]+results@coef[2]*x)),col = "blue", add=TRUE)
+```
+
+The curve found through logistic regression appears to be a reasonable approximation of how lot area and sale type are related due to the points in the upper portion of the graph being crossed by the curve. Hence, there appears to be a positive relationship between normal type sales and lot area. However, without an appropriate statistical test and as the lower points are not captured by the curve, it is not possible to draw a definite conclusion.
+
+### INVESTIGATION: Is there a statistically significant difference between the average sale price in a house in a cul-de-sac versus a house on a corner? 
+
+To answer this, we can use both simulation and classical means. We begin by using simulation with a permutation test. 
+
+```{r, echo = FALSE}
+# We only want data for	corner lots and	cul-de-sac lots
+lotconfig <- boston2[boston2$LotConfig == "CulDSac" | boston2$LotConfig == "Corner",]
+# We want only want the Sale Prices
+config <- boston2[c("LotConfig", "SalePrice")]
+config <- na.omit(config)
+# Choose out the CulDSac/Corner data indexes
+idxCD <- which(config$LotConfig == "CulDSac")
+idxCO <- which(config$LotConfig == "Corner")
+CDprice <- config$SalePrice[idxCD]
+```
+```{r, echo = TRUE, include = TRUE}
+# Get the average sale price of CulDSac houses
+CDavg <- mean(CDprice); CDavg
+COprice <- config$SalePrice[idxCO]
+# Get the average sale price of Corner houses
+COavg <- mean(COprice); COavg
+# Take the difference of the two to see which has the higher number average sale price
+obsdiff <- CDavg - COavg; obsdiff 
+# This implies that on average, houses on cul-de-sacs sell at a higher sale price
+# than houses on corners
+```
+
+We can then conduct our permutation test.
+
+```{r, echo = TRUE, include = TRUE}
+# Repeat 10000 times for our permutation test
+N <- 10000
+diffs <- numeric(N)
+for (i in 1:N){
+  type <- sample(config$LotConfig) # Permuted lot config column
+  CDavg <- sum(config$SalePrice*(type=="CulDSac"))/sum(type=="CulDSac")
+  COavg <- sum(config$SalePrice*(type=="Corner"))/sum(type=="Corner")
+  diffs[i] <- CDavg - COavg   # As likely to be negative or positive
+}
+mean(diffs) # Should be close to zero
+hist(diffs, breaks = "FD")
+# Now display the observed difference on the histogram
+abline(v=obsdiff)
+pvalue <- (sum(diffs >= obsdiff)+1)/(N+1); pvalue
+```
+
+The probability (the P value, 9.999e-05) that a difference this large could have arisen with a random subset is 0.019998%.Our data provides sufficient evidence against the null hypothesis of there being no difference in the average sale price of a house located in a cul-de-sac over a house located on a corner. Instead it provides sufficient evidence for the hypothesis that there is a difference in the average sale price of a house located in a cul-de-sac over a house located on a corner. We can asses that the average sale price of a house on a cul-de-sac in Boston is greater than the average sale price of a house on a corner in Boston.
+
+We can now use classical means and compare. 
+```{r, echo = TRUE, include = TRUE}
+
+# Now let us look at a two-sample t-test
+t.test(config$SalePrice[idxCD], config$SalePrice[idxCO], var.equal = TRUE)
+```
+This also gives us a p-value of 6.344e-05, which is very comparable to our earlier p-value, and confirms our earlier results. 
+
+Notably, although they are comparable, our permutation test results are more reliable because our two-sample t-test particularly relies on the assumption that our data follows a normal distribution, while the permutation test has no such assumptions or requirements.
+
+## INVESTIGATION: Can we check whether a sampling distribution of the above grade (ground) living area in square feet in Boston is standard normal? 
+
+If we let GrLivArea, the above grade (ground) living area square feet, be equal to random variable Y, it might not be unreasonable to assume that the random variable $X=\frac{(Y-\mu)}{\sigma}$ has a standard normal distribution, especially given the large number of data points we have. According to the Central Limit Theorem, if we take our population with mean $\mu$ and standard deviation $\sigma$ and we take sufficiently large random samples from the population, then the distribution of the sample means will be approximately normally distributed. Thus, we would theoretically expect our random variable  to have a standard normal distribution. 
+
+We want to perform a simulation by taking samples of six houses at a time, to see whether this sampling distribution behaves as if drawn from a population with a normal distribution. 
+```{r, echo=FALSE}
+boston <- read.csv("boston.csv")
+```
+```{r, echo = TRUE, fig.width = 5, fig.height = 3}
+GrLivArea <- boston$GrLivArea
+mu <- mean(GrLivArea)
+sigma <- sd(GrLivArea)
+N <- 10000
+n <- 6
+get.sample <- function() sample(GrLivArea, n) # defining our sampling function
+standardizedsample <- numeric(N)
+for(i in 1:N) {
+  x <- get.sample()
+  standardizedsample[i] <- (mean(x) - mu)/(sigma / sqrt(n))
+}
+hist(standardizedsample, prob = TRUE) # histogram
+curve(dnorm(x), add = TRUE) # normal distribution curve
+```
+Indeed, a standard normal curve appears to fit our histogram well, and so our variable X does seem to be distributed standard normal.
+
+## INVESTIGATION: What range of house sale prices captures the mean 95% of the time? 
+We can use a student-t confidence interval to answer this question. 
+
+```{r, echo = FALSE, include = FALSE}
+boston2 <- read.csv("boston2.csv")
+head(boston2)
+```
+```{r, echo = TRUE, include = TRUE, fig.width = 5, fig.height = 5}
+# Let us make a histogram of the means for 10000 samples
+N <- 10^4 # Trials
+n <- 10 # Sample size
+mu <- mean(boston2$SalePrice); mu # Mean: 180921.2
+sigma <- sd(boston2$SalePrice); sigma # Standard dev: 79442.5
+xbar <- numeric(N) # To store our results
+
+# Let us generate our samples
+for (i in 1:N) {
+  samp <- sample(boston2$SalePrice, n) # Take size n sample
+  xbar[i] <- mean(samp) # Store the sample mean
+}
+# Now lets compare the samples with the corresponding normal distribution.
+hist(xbar, probability = TRUE, main = "Histogram of Sample Sales Price Means", breaks = "FD")
+
+# Overlay normal density curve
+curve(dnorm(x, mu, sigma/sqrt(n)), add = TRUE) # It fits pretty well
+
+# Now let us construct the student t 95% confidence interval
+# This is a modification of Paul's 8D Script
+# Initialize the counts for missing the lower/upper points of confidence interval 
+missedL <- 0; missedU <- 0
+# Create a good sized plot
+plot(x = c(mu - 5000, mu + 5000), y = c(1,100), type = "n", xlab = "", ylab = "")
+# Lets take 1000 samples
+N <- 1000
+counter <- 0 # Set counter to 0
+# Run the loop
+for (i in 1:N) {
+  x <- sample(boston2$SalePrice, n) # Take samples size of 10
+  L <- mean(x) + qt(0.025, n - 1) * sd(x)/sqrt(n) # Lower endpoint
+  U <- mean(x) + qt(0.975, n - 1) * sd(x)/sqrt(n) # Upper endpoint
+  # Increment the value is missing the upper or lower endpoint
+  if (mu < L) missedL <- missedL + 1
+  if (mu > U) missedU <- missedU + 1
+  if (L < mu && U > mu) counter <- counter + 1
+  if (i <= 100) segments(L, i, U, i) # Plot the results 
+}
+
+# Plot a vertical line for the true mean
+abline(v = mu, col = "blue")
+# What fraction of the time did the interval include the true mean?
+(N - missedL - missedU)/N
+# What fraction of the time did it miss to the left?
+missedL/N
+# What fraction of the time did it miss to the right?
+missedU/N
+# This confidence interval is not to be trusted because the errors are not symmetrical.
+
+# We can use the built-in t-test function to confirm:
+t.test(boston2$SalePrice, conf.level=0.95)$conf.int
+```
+
+## INVESTIGATION: Does the average wind in Boston from 2013-2018 follow a Gamma Distribution? 
+
+We began by investigating whether the average wind in Boston from 2013-2018 follows a Gamma distribution. As we saw in Paul's gamma fitter app, the average wind speed at the Carleton Turbine can be fitted using a gamma distribution quite well. 
+
+As we are also exploring Boston Housing, we'd also like to explore Boston temperature and see whether the average wind speed in Boston also can be well-approximated using a gamma distribution.
+
+```{r, echo = FALSE, results = "hide", warning = F, message = F}
+library(stats4)  
+weather <- read.csv("Bostonweather.csv")
+AverageWind <- weather$Avg.Wind..mph. # our average wind values from the dataset
+# we set all initial values to 1. 
+shape <- 1
+rate <- 1
+xshape <- 1
+xrate <- 1
+
+# using Paul's function to calculate the negative log-likelihood to find our
+# paramters based on the data: 
+
+```
+
+We used Paul's function to calculate the negative log-likelihood to find our parameters for a gamma distribution based on the data, and we got: 
+```{r, echo = TRUE}
+MLL<- function(shape, rate) {
+  -sum(log(dgamma(AverageWind,shape,rate)))
+}
+results<-mle(MLL, start = list(shape = xshape, rate  = xrate)) #an initial guess is required
+shape <- results@coef[1]; rate <- results@coef[2]
+shape; rate
+```
+We then laid a gamma distribution curve over the data with these parameters to see whether it would be a good fit. 
+```{r, echo = TRUE, fig.width = 5, fig.height = 3}
+hist(AverageWind, prob=TRUE)
+curve(dgamma(x, shape, rate=rate), add = TRUE)
+```
+
+It indeed seems to fit well!
+
+We can also check the mean and variance of the average wind speed vector, and see if it matches with the calculated mean and variance based on our gamma distribution: 
+
+```{r, echo = TRUE}
+mean(AverageWind); var(AverageWind) # the true mean and variance
+round(shape/rate,4); round(shape/rate^2,6) # mean and variance based on gamma distribution
+# indeed, they are very close! 
+```
+We then conducted a chi-square test to see if we could see if the average wind speed truly had a gamma distribution. 
+
+We start with binning our observed values into 10 categories, and calculating our expected values. 
+```{r, echo=TRUE, include = TRUE}
+bins <- qgamma(0.1 * (0:10), shape = 8.44354, rate = 0.7792171) # using our found parameters
+observed <- as.data.frame(table(cut(AverageWind, bins, labels = FALSE)))$Freq
+observed
+
+# to calculate our expected values: 
+expected <- sum(observed)/10; expected
+```
+We can then calculate the chi-squared value and p-value:
+```{r, echo = TRUE}
+Chi2 <-sum((observed-expected)^2/expected); Chi2
+Pvalue<- pchisq(Chi2,8,lower.tail = FALSE); Pvalue
+```
+So, as our p-value is 2.880328e-22, which is less than 0.05, we have found that our result is statistically significant.  As such, we reject the null hypothesis that our data follows a gamma distribution, despite our earlier analysis that suggested the average windspeed DID follow a gamma distribution. 
+
+
+
+
+
+
+
+
+
+
