@@ -1,7 +1,7 @@
 # Boston Housing and Weather R Project
-Harvard Math23C Term Project
+Harvard Math23C: Mathematics for Computation, Statistics, and Data Science
 
-An Investigation Into Boston Housing and Weather
+Term Project: An Investigation Into Boston Housing and Weather
 
 Spring 2021
 
